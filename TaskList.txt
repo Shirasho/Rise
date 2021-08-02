@@ -1,0 +1,70 @@
+https://docs.unrealengine.com/4.26/en-US/Basics/Projects/Packaging/
+
+Documentation
+----------
+@note <Description>
+@param <ParamName> <Description>
+@param Out<ParamName> Reference passed in to store <Description> 
+@return <Description>
+
+Idea
+----------
+You are a spiritual being who has weakened and fallen to "Earth" [Players choose a starting spiritual being and get bonuses depending on
+the one picked]. You land in the middle of some land where the resident monsters decide to worship you in return for protection. You
+start the game as the spiritual being on top of a shabby plinth made of stacked stones and have 6 villagers to work with [race of villagers
+pending]. The goal is to upgrade the plinth (and therefore the spiritual being).
+
+Villagers initially can only build shabby buildings out of sticks, rocks, and grass. As more resources are collected, certain recipes can
+be crafted to produce better items. In addition, research may be required. This in turn leads to better buildings and better tools, repeating
+the cycle.
+
+Villagers range from beastmen to goblins to ogres, each with strengths, weaknesses, and different needs. Some races prefer wooden housing while
+others require stone housing due to their size or build. Some races require fruits and vegetables while others require fish or meat.
+
+The game does not have a concept of "ages" or "eras". The game takes place in the modern era, but the spiritual being can essentially be seen
+as granting intelligence and power to its worshippers. As such, there will be no artificial blockers that prevent the player from researching
+or building things that are far in the tech tree. For example, it is possible to craft fine lumber even if the buildings are still made from
+sticks and rocks. An example of artificial blockers would be requiring 2 buildings of a certain age in order to advance to the next age in
+Age of Empires.
+
+Resources
+----------
+- Currency
+- Sticks -> Logs -> Lumber
+- Rocks -> Stone -> Bricks
+- Iron
+- Steel
+- Copper
+- Coal
+- Animal hide
+- Grass -> Fiber -> Fabric
+- Food [
+	Berries
+	Fish
+	Boar
+	Deer
+	Wheat
+	Potatoes
+	Rice	
+]
+- Water
+
+Structures
+----------
+- Plinth [Spiritual Dwelling, upgrading improves spiritual being bonuses]
+- Hovel -> Shack -> Hut -> Wood House [Increases small/medium population cap and happiness]
+- Stone House -> Brick House [Increases large population cap and happiness]
+- Community Dwelling [Increases population cap, does not increase happiness]
+- Fire Pit -> Kitchen [Converts raw ingredients to cooked products which are more filling and last longer.]
+- Stockpile -> Storage Hut -> Depot -> Warehouse [Stores resources, cooked foods can only be stored in storage huts or higher]
+- Rough Dirt Road -> Dirt Road -> Stone Road -> Brick Road [Increases villager movement speed]
+- Trading Post -> Market [Allows trading of resources]
+- Well [Allows collection of water]
+- Field Hospital -> Hospotal [Heals wounded villagers]
+- Farm [Grow food]
+- Wood processing
+- Textile processing
+
+Game Modes
+----------
+- Survival
