@@ -1,1 +1,0 @@
-call "D:\Frameworks\UE\UE_5Source\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe" -projectfiles "%~dp0Rise.uproject"
