@@ -1,0 +1,86 @@
+It is difficult to figure out what direction I want the project to go. There are three
+directions to choose from. Each have their own pros and cons.
+
+4X Civ Style
+--------
+This style would work almost exactly like Civ does. The player would start on a single
+tile with the surrounding tiles exposed. The player would work the tiles in a similar
+fashion, creating workers to transform nearby land into lumber camps, mills, etc. Each
+unit on the map would represent a larger population (1 worker = 1000 population for example).
+
+The problem with this direction is that the game is intended to be real time, so integrating
+the desired mechanics may seem a bit janky unless designed properly. I do not have confidence
+in my ability to design the systems correctly since I tend to not play turn based 4X
+style games.
+
+The benefit of this direction is that each resource is clearly defined.
+
+
+Age of Empires or Starcraft Style
+--------
+This style would play exactly like Age of Empires I or II or Starcraft II. The player starts
+with a central building and a few starting workers. Workers must constantly be assigned to
+a resource in order to collect it. This was the original direction I had wanted to go when
+initially creating the game.
+
+The problem with this system is that resources may end up expended too quickly. Unlike Starcraft
+and Age of Empires, each game is expected to last multiple hours. While the initial thought would
+be to just increase the number of resources each resource node gives so the resource is depleted
+slower, this may have impacts for how quickly players can expand. In addition, constantly uprooting
+lumber camps in Age of Empires is something I find pretty annoying.
+
+Another problem is that Age of Empires and Starcraft don't have the satisfaction or realism that
+comes with building in scale. It makes no sense that 40 villagers can support an entire empire.
+It makes no sense that 40 units make up an entire army. The goal I want to achieve is to start
+with a handful of villagers and have the player make real impactful decisions that allow their
+worker count to increase to upwards of 20,000.
+
+The benefit of this direction is that the genre is pretty clearly defined and expectations are
+well known. On the other hand, making unoriginal gameplay with a different coat of paint is not
+particularly good either.
+
+
+They Are Billions Style
+--------
+
+This style of gameplay would have villagers trickle in over time as long as the player has the
+housing space for them. The production of production buildings would depend on how close they
+are placed to their corresponding resource, and overlapping like production buildings would
+cause a productivity drop in both.
+
+These mechanics make it really easy to balance values since resources are not depleted. Workers
+do not need to walk further each time they cut down a tree, and worldgen would be simpler when
+it comes to advantages with other terrain.
+
+The downside is that this system would need very serious attention to detail in multiplayer
+settings.
+
+--------
+--------
+
+Now that the systems are laid out, what can we take from them?
+
+I believe that a combination of the latter two styles will drive the direction I wish to take.
+- Players can create villagers in a central building, but only one at a time. In addition,
+  workers that share a house may make children of their own. Refugees make come to your town
+  from time to time in large groups.  
+- Each villager will represent a single person, and each person will have traits that empower
+  or weaken them. This would be in addition to any racial traits.
+	- Beastmen
+		- Higher strength, allowing them to carry more resources at once or cut/mine faster
+		- Lower dexterity, increasing the time it takes for them to do certain tasks (textile, etc)
+	- Lizardmen
+		- Able to catch fish faster
+		- All work slower when the temperature drops
+	- Goblins
+		- Reproduce quickly
+		- Low intelligence (cannot perform research)
+		- Low strength
+	- Ogres
+		- Higher strength
+		- Low intelligence
+- Production buildings (lumber camps) will gain benefits from being placed near more trees,
+  and productivity will drop if they are too close to each other. Trees can be cut down which
+  would cause a temporary drop in production, but they will be replanted automatically as long
+  as the production building has at least one worker. This system will work almost exactly like
+  Banished handles it.
