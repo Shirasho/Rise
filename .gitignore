@@ -72,5 +72,10 @@ Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Utility Batch files
 GenerateEngineAndProjectFiles.bat
 GenerateProjectFiles.bat
+
+# Pre-packaged sprites - this are for-sale, so we do not want to put the full contents up publically.
+Content/Sprites/*
