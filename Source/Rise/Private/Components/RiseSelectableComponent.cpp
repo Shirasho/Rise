@@ -44,7 +44,7 @@ void URiseSelectableComponent::BeginPlay()
 	}
 	else
 	{
-		DEBUG_WARNING(TEXT("SelectableComponent is missing a selected material."));
+		RISE_WARNING(TEXT("SelectableComponent is missing a selected material."));
 	}
 
 	// Hide the decal to start.

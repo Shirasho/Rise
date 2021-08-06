@@ -14,7 +14,6 @@
 #include "RisePlayerState.h"
 #include "Components/RiseSelectableComponent.h"
 #include "Libraries/RiseActorLibrary.h"
-#include "Structures/RiseCommandStation.h"
 #include "Volumes/RiseCameraBoundsVolume.h"
 
 #define BIND_CAMERA_FUNCTION(Function, Direction, Curve) \
@@ -941,19 +940,19 @@ void ARisePlayerController::ZoomCameraOut()
 
 void ARisePlayerController::OnInput_Debug()
 {
-	FTransform SpawnActorTransform(FVector::ZeroVector);
+	//FTransform SpawnActorTransform(FVector::ZeroVector);
 
-	RiseHelpers::FBlueprintClassFinder<ARiseCommandStation> CommandStationBP(TEXT("/Game/Blueprints/Structures"), TEXT("CommandStation"));
-	if (CommandStationBP.Succeeded())
-	{
-		UClass* BPClass = CommandStationBP.Class.LoadSynchronous();
-		ARiseCommandStation* SpawnedActor = GetWorld()->SpawnActorDeferred<ARiseCommandStation>(BPClass, SpawnActorTransform);
+	//RiseHelpers::FBlueprintClassFinder<ARiseCommandStation> CommandStationBP(TEXT("/Game/Blueprints/Structures"), TEXT("CommandStation"));
+	//if (CommandStationBP.Succeeded())
+	//{
+	//	UClass* BPClass = CommandStationBP.Class.LoadSynchronous();
+	//	ARiseCommandStation* SpawnedActor = GetWorld()->SpawnActorDeferred<ARiseCommandStation>(BPClass, SpawnActorTransform);
 
-		//if (!SpawnedActor->TrySetStructureLevel(2))
-		//{
-		//	DEBUG_WARNING(TEXT("Unable to set structure to level 2."));
-		//}
+	//	//if (!SpawnedActor->TrySetStructureLevel(2))
+	//	//{
+	//	//	DEBUG_WARNING(TEXT("Unable to set structure to level 2."));
+	//	//}
 
-		UGameplayStatics::FinishSpawningActor(SpawnedActor, SpawnActorTransform);
-	}
+	//	UGameplayStatics::FinishSpawningActor(SpawnedActor, SpawnActorTransform);
+	//}
 }
