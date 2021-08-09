@@ -1,0 +1,15 @@
+/**
+ * <Description>
+ *
+ * @param <ParamName> <Description>
+ * @param Out<ParamName> Reference passed in to store <Description> 
+ * @return <Description>
+ *
+ * @note <Description>
+ */
+ UFUNCTION()
+ 
+ 
+ /** <Description> */
+ UPROPERTY()
+ 
