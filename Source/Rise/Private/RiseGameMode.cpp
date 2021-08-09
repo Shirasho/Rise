@@ -75,27 +75,43 @@ void ARiseGameMode::RestartPlayer(AController* NewPlayer)
 
 void ARiseGameMode::RestartPlayerAtPlayerStart(AController* NewPlayer, AActor* StartSpot)
 {
-	AGameModeBase::RestartPlayerAtPlayerStart(NewPlayer, StartSpot);
-
-	if (!NewPlayer || NewPlayer->IsPendingKillPending() || !StartSpot)
+	if (!NewPlayer || NewPlayer->IsPendingKillPending())
 	{
 		return;
 	}
 
 	ARisePlayerStart* PlayerStart = Cast<ARisePlayerStart>(StartSpot);
-	if (PlayerStart)
+	if (!PlayerStart)
 	{
-		PlayerStart->SetPlayer(NewPlayer);
-		UE_LOG(LogRise, Log, TEXT("Start spot %s is now occupied by player %s."), *PlayerStart->GetName(), *NewPlayer->GetName());
+		PlayerStart = GetUnassignedPlayerStart();
+		if (PlayerStart)
+		{
+			PlayerStart->SetPlayer(NewPlayer);
+			UE_LOG(LogRise, Log, TEXT("Start spot %s is now occupied by player %s."), *PlayerStart->GetName(), *NewPlayer->GetName());
+		}
+		else
+		{
+			RISE_ERRORF(TEXT("Unable to find or assign RisePlayerStart for player %s."), *NewPlayer->GetName());
+		}
 	}
+
+	AGameModeBase::RestartPlayerAtPlayerStart(NewPlayer, PlayerStart ? PlayerStart : StartSpot);
 
 	ARisePlayerState* PlayerState = Cast<ARisePlayerState>(NewPlayer->PlayerState);
 	if (IsValid(PlayerState))
 	{
 		uint8 PlayerIndex = GetAvailablePlayerIndex();
-
 		PlayerState->SetPlayerIndex(PlayerIndex);
-		Teams[PlayerState->GetTeam()->GetTeamIndex()]->AddToTeam(NewPlayer);
+
+		ARiseTeamInfo* Team = PlayerState->GetTeam();
+		if (!Team)
+		{
+			RISE_WARNING(TEXT("TODO: PlayerState does not have assigned team. This will be set during scenario creation."));
+			RISE_WARNING(TEXT("Assigning Player to Team 0."));
+
+			Team = Teams[0];
+		}
+		Teams[Team->GetTeamIndex()]->AddToTeam(NewPlayer);
 
 		for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 		{
@@ -109,31 +125,34 @@ void ARiseGameMode::RestartPlayerAtPlayerStart(AController* NewPlayer, AActor* S
 		}
 	}
 
-	//TODO: We probably don't want to use the PlayerStart's rotation to do this.
-	//		We probably need to reach out to the grid manager and detect the
-	//		"town center's" rotation on the grid.
-	FRotator ActorSpawnRotation(ForceInit);
-	ActorSpawnRotation.Yaw = StartSpot->GetActorRotation().Yaw;
-
-	FVector SpawnLocation = StartSpot->GetActorLocation();
-
-	for (int32 SpawnParamIndex = 0; SpawnParamIndex < PlayerSpawnParameters.Num(); ++SpawnParamIndex)
+	if (!PlayerSpawnParameters.IsEmpty())
 	{
-		const FRisePlayerUnitSpawnParameters& SpawnParameters = PlayerSpawnParameters[SpawnParamIndex];
+		//TODO: We probably don't want to use the PlayerStart's rotation to do this.
+		//		We probably need to reach out to the grid manager and detect the
+		//		"town center's" rotation on the grid.
+		FRotator ActorSpawnRotation(ForceInit);
+		ActorSpawnRotation.Yaw = StartSpot->GetActorRotation().Yaw;
 
-		FVector ActorSpawnLocation = SpawnLocation + SpawnParameters.UnitLocation;
-		FTransform ActorSpawnTransform = FTransform(ActorSpawnRotation, ActorSpawnLocation);
+		FVector SpawnLocation = StartSpot->GetActorLocation();
 
-		bool bAssignedOwnership;
-		AActor* SpawnedActor = SpawnActorForPlayer(SpawnParameters.Unit, NewPlayer, ActorSpawnTransform, bAssignedOwnership);
-		if (!bAssignedOwnership)
+		for (int32 SpawnParamIndex = 0; SpawnParamIndex < PlayerSpawnParameters.Num(); ++SpawnParamIndex)
 		{
-			UE_LOG(LogRise, Log, TEXT("Unable to assign starting actor %s to player."), *SpawnedActor->GetName());
-		}
+			const FRisePlayerUnitSpawnParameters& SpawnParameters = PlayerSpawnParameters[SpawnParamIndex];
 
-		//TODO: Depending on how we decide to create buildings, the actor that is spawned may
-		//		not be in a usable state. In that case we need to complete construction of
-		//      that building. We can do that here.
+			FVector ActorSpawnLocation = SpawnLocation + SpawnParameters.UnitLocation;
+			FTransform ActorSpawnTransform = FTransform(ActorSpawnRotation, ActorSpawnLocation);
+
+			bool bAssignedOwnership;
+			AActor* SpawnedActor = SpawnActorForPlayer(SpawnParameters.Unit, NewPlayer, ActorSpawnTransform, bAssignedOwnership);
+			if (!bAssignedOwnership)
+			{
+				UE_LOG(LogRise, Log, TEXT("Unable to assign starting actor %s to player."), *SpawnedActor->GetName());
+			}
+
+			//TODO: Depending on how we decide to create buildings, the actor that is spawned may
+			//		not be in a usable state. In that case we need to complete construction of
+			//      that building. We can do that here.
+		}
 	}
 }
 
@@ -143,6 +162,45 @@ ARisePlayerStart* ARiseGameMode::GetRisePlayerStartForPlayer(AController* Player
 	{
 		ARisePlayerStart* PlayerStart = *It;
 		if (PlayerStart->GetPlayer() == Player)
+		{
+			return PlayerStart;
+		}
+	}
+
+	return nullptr;
+}
+
+ARisePlayerStart* ARiseGameMode::GetOrAssignPlayerStartForPlayer(AController* Player)
+{
+	ARisePlayerStart* FirstEmptySpot = nullptr;
+
+	for (TActorIterator<ARisePlayerStart> It(GetWorld()); It; ++It)
+	{
+		ARisePlayerStart* PlayerStart = *It;
+		if (PlayerStart->GetPlayer() == Player)
+		{
+			return PlayerStart;
+		}
+		else if (PlayerStart->GetPlayer() == nullptr)
+		{
+			FirstEmptySpot = PlayerStart;
+		}
+	}
+
+	if (FirstEmptySpot)
+	{
+		FirstEmptySpot->SetPlayer(Player);
+	}
+
+	return FirstEmptySpot;
+}
+
+ARisePlayerStart* ARiseGameMode::GetUnassignedPlayerStart() const
+{
+	for (TActorIterator<ARisePlayerStart> It(GetWorld()); It; ++It)
+	{
+		ARisePlayerStart* PlayerStart = *It;
+		if (PlayerStart->GetPlayer() == nullptr)
 		{
 			return PlayerStart;
 		}

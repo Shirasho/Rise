@@ -242,6 +242,24 @@ public:
 	virtual ARisePlayerStart* GetRisePlayerStartForPlayer(AController* Player) const;
 
 	/**
+	 * Finds a PlayerStart for the specified player. If the player is not assigned a PlayerStart,
+	 * one will be assigned to the player assuming an unassigned PlayerStart exists.
+	 * 
+	 * @param Player The player to find the PlayerStart for.
+	 * @return The PlayerStart associated with the player.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Rise")
+	virtual ARisePlayerStart* GetOrAssignPlayerStartForPlayer(AController* Player);
+
+	/**
+	 * Finds an unassigned PlayerStart.
+	 *
+	 * @return The first unassigned PlayerStart.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Rise")
+	ARisePlayerStart* GetUnassignedPlayerStart() const;
+
+	/**
 	 * Gets the teams of the current match.
 	 * 
 	 * @return The teams of the current match.
