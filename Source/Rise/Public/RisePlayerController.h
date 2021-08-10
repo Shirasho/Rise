@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/TimelineComponent.h"
 #include "GameFramework/PlayerController.h"
 
 #include "RisePlayerController.generated.h"
@@ -10,27 +9,6 @@ class ARiseCameraBoundsVolume;
 class ARisePlayer;
 class ARisePlayerState;
 class ARiseTeamInfo;
-class UCurveFloat;
-
-/** 
- * A struct for storing FTimeline drift values relating to camera movement.
- */
-USTRUCT()
-struct FRiseCameraDrift
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY()
-	FTimeline Timeline;
-
-	float Drift;
-
-	FRiseCameraDrift()
-	{
-		Timeline = FTimeline();
-		Drift = 0;
-	}
-};
 
 /**
  * The base PlayerController class for Rise game modes.
@@ -46,35 +24,52 @@ private:
 
 	/** The slowest the camera can move while panning. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (ClampMin = "0", ClampMax = "25"))
-	float MinimumCameraSpeed;
+	float PanCameraMinimumSpeed;
 
 	/** The fastest the camera can move while panning. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (ClampMin = "0", ClampMax = "25"))
-	float MaximumCameraSpeed;
+	float PanCameraMaximumSpeed;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera")
+	bool bPanCameraRegionPercent;
+
+	/**
+	 * The number of pixels from the edge of the screen in which to start panning the camera in that direction.
+	 * 
+	 * @note This value is incompatible with PanCameraRegionPercent.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (DisplayAfter="bPanCameraRegionPercent", EditCondition="!bPanCameraRegionPercent"))
+	int32 PanCameraRegionPixels;
+
+	/**
+	 * The percent size of the horizontal screen to use to calculate a pan region.
+	 * 
+	 * Example: 0.05 at 1080p is the equivalent of setting PanCameraRegionPixels to 96.
+	 *
+	 * @note This value is incompatible with PanCameraRegionPixels.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (DisplayAfter = "PanCameraRegionPixels", EditCondition="bPanCameraRegionPercent"))
+	float PanCameraRegionPercent;
+
+	/** The time it takes to ease the camera pan to a full stop on an axis after the camera pan input is released. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (ClampMin = "0"))
+	float PanCameraEaseDuration;
 
 	/** The closest the camera can zoom into. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera")
-	float MinimumCameraZoom;
+	float ZoomCameraMinimumDistance;
 
 	/** The furthest the camera can zoom out to. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera")
-	float MaximumCameraZoom;
+	float ZoomCameraMaximumDistance;
 
 	/** How much to zoom the camera in and out at once. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (ClampMin = "0"))
-	float CameraZoomStep;
-
-	/** The maximum distance from the screen border at which the cursor will cause the camera to pan, in pixels. */
-	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera")
-	int32 CameraPanThreshold;
-
-	/** The curve defining how the camera should move while panning. */
-	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera")
-	UCurveFloat* CameraPanCurve;
-
-	/** The curve defining how the camera should move while zooming. */
-	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera")
-	UCurveFloat* CameraZoomCurve;
+	float ZoomCameraStep;
+	
+	/** The time it takes to ease the camera zoom to a full stop on an axis after the camera zoom input is released. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta = (ClampMin = "0"))
+	float ZoomCameraEaseDuration;
 
 	/** The camera volume bounds that restrict camera movement for this player. */
 	UPROPERTY()
@@ -509,29 +504,23 @@ protected:
 
 private:
 
-	float CameraHorizontalAxisValue;
-	float CameraVerticalAxisValue;
-	UPROPERTY()	FRiseCameraDrift CameraHorizontalPanDrift;
-	UPROPERTY()	FRiseCameraDrift CameraVerticalPanDrift;
-	UFUNCTION()	void OnCameraHorizontalPanInterp(float Drift);
-	UFUNCTION() void OnCameraHorizontalPanFinished();
-	UFUNCTION()	void OnCameraVerticalPanInterp(float Drift);
-	UFUNCTION() void OnCameraVerticalPanFinished();
+	float PanCameraHorizontalAxisValue;
+	float PanCameraHorizontalDelta;
+	float PanCameraVerticalAxisValue;
+	float PanCameraVerticalDelta;
 
-	void PanCameraUp(float Scale);
-	void PanCameraDown(float Scale);
-	void PanCameraLeft(float Scale);
-	void PanCameraRight(float Scale);
+	void PanCameraHorizontal(float Scale);
+	void PanCameraVertical(float Scale);
 
-	UPROPERTY()	FTimeline CameraZoom;
+	float ZoomCameraCurrentStep;
+	float ZoomCameraTargetStep;
+	float ZoomCameraDelta;
+
 	void ZoomCameraIn();
 	void ZoomCameraOut();
-	UFUNCTION()	void OnCameraZoomInterp(float Lerp);
-	UFUNCTION() void OnCameraZoomFinished();
 
-	float CurrentCameraZoomStep;
-	float TargetCameraZoomStep;
-
+	void UpdateCamera(float DeltaTime);
+	float GetCameraZoomActual() const;
 	float CalculateCameraMovementSpeed() const;
 
 protected:	

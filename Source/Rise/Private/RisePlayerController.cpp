@@ -4,6 +4,7 @@
 #include "Landscape.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Sound/SoundCue.h"
 #include "UObject/SoftObjectPtr.h"
 
@@ -16,65 +17,36 @@
 #include "Libraries/RiseActorLibrary.h"
 #include "Volumes/RiseCameraBoundsVolume.h"
 
-#define BIND_CAMERA_FUNCTION(Function, Direction, Curve) \
-FOnTimelineFloat Camera##Direction##Function##Interp{}; \
-FOnTimelineEvent Camera##Direction##Function##Finished{}; \
-Camera##Direction##Function##Interp.BindUFunction(this, MAKE_NAME(OnCamera##Direction##Function##Interp)); \
-Camera##Direction##Function##Finished.BindUFunction(this, MAKE_NAME(OnCamera##Direction##Function##Finished)); \
-if (##Curve) \
-{ \
-	Camera##Direction##Function##Drift.Timeline.AddInterpFloat(##Curve, Camera##Direction##Function##Interp, FName("Delta")); \
-} \
-Camera##Direction##Function##Drift.Timeline.SetLooping(false) \
-
-#define BIND_CAMERA_FUNCTION_RAW(Function, Curve) \
-FOnTimelineFloat Camera##Function##Interp{}; \
-FOnTimelineEvent Camera##Function##Finished{}; \
-Camera##Function##Interp.BindUFunction(this, MAKE_NAME(OnCamera##Function##Interp)); \
-Camera##Function##Finished.BindUFunction(this, MAKE_NAME(OnCamera##Function##Finished)); \
-if (##Curve) \
-{ \
-	Camera##Function.AddInterpFloat(##Curve, Camera##Function##Interp, FName("Delta")); \
-} \
-Camera##Function.SetLooping(false) \
-
-#define CAMERA_FUNCTION_IMPL(Function, Direction) \
-void ARisePlayerController::OnCamera##Direction##Function##Interp(float TimelineValue) \
-{ \
-	Camera##Direction##Function##Drift.Drift = TimelineValue; \
-} \
-void ARisePlayerController::OnCamera##Direction##Function##Finished() { Camera##Direction##Function##Drift.Drift = 0;  }
-
 ARisePlayerController::ARisePlayerController()
 {
-	CameraHorizontalPanDrift = FRiseCameraDrift();
-	CameraVerticalPanDrift = FRiseCameraDrift();
-	CameraZoom = FTimeline();
+	//TODO: This will be set to true when we create an intro sequence.
+	bCameraMovementDisabled = false;
 
-	MinimumCameraSpeed = 5;
-	MaximumCameraSpeed = 20;
-	MinimumCameraZoom = 400;
-	MaximumCameraZoom = 1500;
-	CameraZoomStep = 25;
-	CameraPanThreshold = 20;
-	CameraVerticalAxisValue = 0;
-	CameraHorizontalAxisValue = 0;
+	PanCameraMinimumSpeed = 5.f;
+	PanCameraMaximumSpeed = 20.f;
+	bPanCameraRegionPercent = false;
+	PanCameraRegionPercent = 0.05f;
+	PanCameraRegionPixels = 1920 * PanCameraRegionPercent; // 1080p default
+	PanCameraHorizontalAxisValue = 0.f;
+	PanCameraHorizontalDelta = 0.f;
+	PanCameraVerticalAxisValue = 0.f;
+	PanCameraVerticalDelta = 0.f;
+	PanCameraEaseDuration = 0.25f; // 250ms
+	ZoomCameraMinimumDistance = 400;
+	ZoomCameraMaximumDistance = 1500;
+	ZoomCameraStep = 25;
+	ZoomCameraEaseDuration = 0.25f; // 250ms
+
+	bCreatingSelectionFrame = false;
+	bInverseSelectionHotkeyPressed = false;
 }
 
 void ARisePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Bind camera functions to input
-	BIND_CAMERA_FUNCTION(Pan, Horizontal, CameraPanCurve);
-	BIND_CAMERA_FUNCTION(Pan, Vertical, CameraPanCurve);
-	BIND_CAMERA_FUNCTION_RAW(Zoom, CameraZoomCurve);
-
-	ARisePlayer* GamePawn = GetRisePlayer();
-	check(GamePawn);
-
-	CurrentCameraZoomStep = GamePawn->CameraSpringArmComponent->TargetArmLength;
-	TargetCameraZoomStep = CurrentCameraZoomStep;
+	ZoomCameraCurrentStep = GetZameraZoomActual();
+	ZoomCameraTargetStep = ZoomCameraCurrentStep;
 
 	for (TActorIterator<ARiseCameraBoundsVolume> ActorItr(GetWorld()); ActorItr; ++ActorItr)
 	{
@@ -117,10 +89,10 @@ void ARisePlayerController::SetupInputComponent()
 		InputComponent->BindAction(TEXT("ZoomCameraIn"), IE_Pressed, this, &ARisePlayerController::ZoomCameraIn);
 		InputComponent->BindAction(TEXT("ZoomCameraOut"), IE_Pressed, this, &ARisePlayerController::ZoomCameraOut);
 
-		InputComponent->BindAxis(TEXT("PanCameraUp"), this, &ARisePlayerController::PanCameraUp);
-		InputComponent->BindAxis(TEXT("PanCameraDown"), this, &ARisePlayerController::PanCameraDown);
-		InputComponent->BindAxis(TEXT("PanCameraLeft"), this, &ARisePlayerController::PanCameraLeft);
-		InputComponent->BindAxis(TEXT("PanCameraRight"), this, &ARisePlayerController::PanCameraRight);
+		InputComponent->BindAxis(TEXT("PanCameraUp"), this, &ARisePlayerController::PanCameraVertical);
+		InputComponent->BindAxis(TEXT("PanCameraDown"), this, &ARisePlayerController::PanCameraVertical);
+		InputComponent->BindAxis(TEXT("PanCameraLeft"), this, &ARisePlayerController::PanCameraHorizontal);
+		InputComponent->BindAxis(TEXT("PanCameraRight"), this, &ARisePlayerController::PanCameraHorizontal);
 	}
 }
 
@@ -128,130 +100,174 @@ void ARisePlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
-	APawn* PlayerPawn = GetPawnOrSpectator();
-	if (!PlayerPawn)
+	UpdateCamera(DeltaTime);
+
+	// Get hovered actor.
+	// TODO: Is this more efficient to do through built-in collision events? Does such a thing exist?
+	AActor* OldHoveredActor = HoveredActor;
+	HoveredActor = nullptr;
+
+	TArray<FHitResult> HitResults;
+	if (GetHitResultsUnderCursor(HitResults))
 	{
-		return;
+		for (FHitResult& HitResult : HitResults)
+		{
+			HoveredWorldPosition = HitResult.Location;
+
+			AActor* HitActor = HitResult.GetActor();
+			if (!HitActor || Cast<ALandscape>(HitActor))
+			{
+				continue;
+			}
+
+			URiseSelectableComponent* SelectableComponent = HitActor->FindComponentByClass<URiseSelectableComponent>();
+			if (!SelectableComponent)
+			{
+				continue;
+			}
+
+			HoveredActor = HitActor;
+			break;
+		}
 	}
 
+	if (HoveredActor != OldHoveredActor)
+	{
+		if (IsValid(OldHoveredActor))
+		{
+			URiseSelectableComponent* SelectableComponent = OldHoveredActor->FindComponentByClass<URiseSelectableComponent>();
+			if (IsValid(SelectableComponent))
+			{
+				SelectableComponent->UnhoverActor();
+			}
+		}
+
+		if (IsValid(HoveredActor))
+		{
+			URiseSelectableComponent* SelectableComponent = HoveredActor->FindComponentByClass<URiseSelectableComponent>();
+			if (IsValid(SelectableComponent))
+			{
+				SelectableComponent->HoverActor();
+			}
+		}
+
+		NotifyHoveredActorChanged(HoveredActor);
+	}
+
+	// Remove dead selected actors.
+	int OldSelectedActorsCount = SelectedActors.Num();
+	for (int32 SelectedActorIndex = OldSelectedActorsCount - 1; SelectedActorIndex >= 0; --SelectedActorIndex)
+	{
+		AActor* Actor = SelectedActors[SelectedActorIndex];
+		if (!IsValid(Actor))
+		{
+			SelectedActors.RemoveAt(SelectedActorIndex);
+			continue;
+		}
+	}
+
+	if (SelectedActors.Num() != OldSelectedActorsCount)
+	{
+		NotifySelectedActorsChanged(SelectedActors);
+	}
+}
+
+void ARisePlayerController::UpdateCamera(float DeltaTime)
+{
 	if (!bCameraMovementDisabled)
 	{
-		CameraHorizontalPanDrift.Timeline.TickTimeline(DeltaTime);
-		CameraVerticalPanDrift.Timeline.TickTimeline(DeltaTime);
-		CameraZoom.TickTimeline(DeltaTime);
+		APawn* PlayerPawn = GetPawnOrSpectator();
+		if (!PlayerPawn)
+		{
+			return;
+		}
 
-		// Apply camera pan.
+		// Apply camera pan from viewport boundaries.
 		if (GEngine)
 		{
 			const FVector2D ViewportSize = FVector2D(GEngine->GameViewport->Viewport->GetSizeXY());
-			const float ScrollBorderRight = ViewportSize.X - CameraPanThreshold;
-			const float ScrollBorderTop = ViewportSize.Y - CameraPanThreshold;
+			float ScrollBorderRight, ScrollBorderTop;
+
+			const int32 PamCameraRegionPixelsCalculated = !bPanCameraRegionPercent
+				? PanCameraRegionPixels
+				: (ViewportSize.X * PanCameraRegionPercent);
+
+			ScrollBorderRight = ViewportSize.X - PamCameraRegionPixelsCalculated;
+			ScrollBorderTop = ViewportSize.Y - PamCameraRegionPixelsCalculated;
 
 			float MouseX, MouseY;
 			if (GetMousePosition(MouseX, MouseY))
 			{
-				if (MouseX < CameraPanThreshold)
+				if (MouseX < PamCameraRegionPixelsCalculated)
 				{
-					CameraHorizontalAxisValue -= 1 - (MouseX / CameraPanThreshold);
+					PanCameraHorizontalAxisValue -= 1 - (MouseX / PamCameraRegionPixelsCalculated);
 				}
 				else if (MouseX >= ScrollBorderRight)
 				{
-					CameraHorizontalAxisValue += (MouseX - ScrollBorderRight) / CameraPanThreshold;
+					PanCameraHorizontalAxisValue += (MouseX - ScrollBorderRight) / PamCameraRegionPixelsCalculated;
 				}
 
-				if (MouseY <= CameraPanThreshold)
+				if (MouseY <= PamCameraRegionPixelsCalculated)
 				{
-					CameraVerticalAxisValue += 1 - (MouseY / CameraPanThreshold);
+					PanCameraVerticalAxisValue += 1 - (MouseY / PamCameraRegionPixelsCalculated);
 				}
 				else if (MouseY >= ScrollBorderTop)
 				{
-					CameraVerticalAxisValue -= (MouseY - ScrollBorderTop) / CameraPanThreshold;
+					PanCameraVerticalAxisValue -= (MouseY - ScrollBorderTop) / PamCameraRegionPixelsCalculated;
 				}
 			}
 		}
 
-		CameraHorizontalAxisValue = FMath::Clamp(CameraHorizontalAxisValue, -1.f, 1.f);
-		CameraVerticalAxisValue = FMath::Clamp(CameraVerticalAxisValue, -1.f, 1.f);
+		// Clamp the pan values to between -1 and 1. We don't want, for example, the A key and the mouse to the left
+		// of the screen to pan twice as fast as normal.
+		PanCameraHorizontalAxisValue = FMath::Clamp(PanCameraHorizontalAxisValue, -1.f, 1.f);
+		PanCameraVerticalAxisValue = FMath::Clamp(PanCameraVerticalAxisValue, -1.f, 1.f);
 
-		float HorizontalPanSpeed = CalculateCameraMovementSpeed() * CameraHorizontalAxisValue * CameraHorizontalPanDrift.Drift;
-		float VerticalPanSpeed = CalculateCameraMovementSpeed() * CameraVerticalAxisValue * CameraVerticalPanDrift.Drift;
-
-		FTransform PlayerTransform = PlayerPawn->GetActorTransform();
-		FVector HorizontalPanVector = PlayerTransform.GetRotation().GetRightVector() * CameraHorizontalAxisValue;
-		FVector VerticalPanVector = PlayerTransform.GetRotation().GetForwardVector() * CameraVerticalAxisValue;
-		FVector NewCameraLocation = PlayerTransform.GetLocation() + HorizontalPanVector + VerticalPanVector;
-		
-		FocusCameraOnWorldLocation(NewCameraLocation);
-
-		// Get hovered actor.
-		// TODO: Is this more efficient to do through built-in collision events? Does such a thing exist?
-		AActor* OldHoveredActor = HoveredActor;
-		HoveredActor = nullptr;
-
-		TArray<FHitResult> HitResults;
-		if (GetHitResultsUnderCursor(HitResults))
+		if (PanCameraHorizontalAxisValue >= 0 ||
+			PanCameraVerticalAxisValue >= 0)
 		{
-			for (FHitResult& HitResult : HitResults)
-			{
-				HoveredWorldPosition = HitResult.Location;
+			float HorizontalPanSpeed = CalculateCameraMovementSpeed() * PanCameraHorizontalAxisValue * UKismetMathLibrary::Ease(1, 0, 1 - (PanCameraHorizontalDelta / PanCameraEaseDuration), EEasingFunc::EaseOut);
+			float VerticalPanSpeed = CalculateCameraMovementSpeed() * PanCameraVerticalAxisValue * UKismetMathLibrary::Ease(1, 0, 1 - (PanCameraVerticalDelta / PanCameraEaseDuration), EEasingFunc::EaseOut);
 
-				AActor* HitActor = HitResult.GetActor();
-				if (!HitActor || Cast<ALandscape>(HitActor))
-				{
-					continue;
-				}
+			FTransform PlayerTransform = PlayerPawn->GetActorTransform();
+			FVector HorizontalPanVector = PlayerTransform.GetRotation().GetRightVector() * HorizontalPanSpeed;
+			FVector VerticalPanVector = PlayerTransform.GetRotation().GetForwardVector() * VerticalPanSpeed;
+			FVector NewCameraLocation = PlayerTransform.GetLocation() + HorizontalPanVector + VerticalPanVector;
 
-				URiseSelectableComponent* SelectableComponent = HitActor->FindComponentByClass<URiseSelectableComponent>();
-				if (!SelectableComponent)
-				{
-					continue;
-				}
+			FocusCameraOnWorldLocation(NewCameraLocation);
 
-				HoveredActor = HitActor;
-				break;
-			}
+			// Reset the values for the next input capture.
+			PanCameraHorizontalAxisValue = 0.f;
+			PanCameraVerticalAxisValue = 0.f;
+
+			// Update the pan deltas.
+			PanCameraHorizontalDelta = FMath::Clamp(0, PanCameraEaseDuration, PanCameraHorizontalDelta + DeltaTime);
+			PanCameraVerticalDelta += FMath::Clamp(0, PanCameraEaseDuration, PanCameraVerticalDelta + DeltaTime);
 		}
 
-		if (HoveredActor != OldHoveredActor)
+		if (ZoomCameraTargetStep != GetCameraZoomActual())
 		{
-			if (IsValid(OldHoveredActor))
+			float CameraZoomSpeed = UKismetMathLibrary::Ease(1, 0, 1 - (ZoomCameraDelta / ZoomCameraEaseDuration), EEasingFunc::EaseOut);
+
+			//TODO: Zoom for spectator
+			ARisePlayer* RisePlayer = Cast<ARisePlayer>(PlayerPawn);
+			if (RisePlayer)
 			{
-				URiseSelectableComponent* SelectableComponent = OldHoveredActor->FindComponentByClass<URiseSelectableComponent>();
-				if (IsValid(SelectableComponent))
-				{
-					SelectableComponent->UnhoverActor();
-				}
+				RisePlayer->CameraSpringArmComponent->TargetArmLength = UKismetMathLibrary::Ease(ZoomCameraCurrentStep, ZoomCameraTargetStep, 1 - (ZoomCameraDelta / ZoomCameraEaseDuration), EEasingFunc::EaseOut);
 			}
 
-			if (IsValid(HoveredActor))
-			{
-				URiseSelectableComponent* SelectableComponent = HoveredActor->FindComponentByClass<URiseSelectableComponent>();
-				if (IsValid(SelectableComponent))
-				{
-					SelectableComponent->HoverActor();
-				}
-			}
-
-			NotifyHoveredActorChanged(HoveredActor);
-		}
-
-		// Remove dead selected actors.
-		int OldSelectedActorsCount = SelectedActors.Num();
-		for (int32 SelectedActorIndex = OldSelectedActorsCount - 1; SelectedActorIndex >= 0; --SelectedActorIndex)
-		{
-			AActor* Actor = SelectedActors[SelectedActorIndex];
-			if (!IsValid(Actor))
-			{
-				SelectedActors.RemoveAt(SelectedActorIndex);
-				continue;
-			}
-		}
-
-		if (SelectedActors.Num() != OldSelectedActorsCount)
-		{
-			NotifySelectedActorsChanged(SelectedActors);
+			// Update the zoom delta.
+			ZoomCameraDelta += FMath::Clamp(0, ZoomCameraEaseDuration, ZoomCameraEaseDuration + DeltaTime);
 		}
 	}
+}
+
+float ARisePlayerController::GetCameraZoomActual() const
+{
+	ARisePlayer* GamePawn = GetRisePlayer();
+	check(GamePawn);
+
+	return GamePawn->CameraSpringArmComponent->TargetArmLength;
 }
 
 void ARisePlayerController::Surrender(bool bConfirm)
@@ -345,7 +361,7 @@ float ARisePlayerController::CalculateCameraMovementSpeed() const
 	check(GamePawn->CameraSpringArmComponent);
 
 	float SpringArmLength = GamePawn->CameraSpringArmComponent->TargetArmLength;
-	return FMath::Clamp(SpringArmLength / 100, MinimumCameraSpeed, MaximumCameraSpeed);
+	return FMath::Clamp(SpringArmLength / 100, PanCameraMinimumSpeed, PanCameraMaximumSpeed);
 }
 
 void ARisePlayerController::SetCameraMovementEnabled(bool bEnabled)
@@ -689,6 +705,12 @@ void ARisePlayerController::FocusCameraOnActor(const AActor* Actor)
 
 void ARisePlayerController::FocusCameraOnActors(TArray<AActor*> Actors, bool bAllowCameraZoom)
 {
+	ARisePlayer* RisePlayer = GetRisePlayer();
+	if (!RisePlayer)
+	{
+		return;
+	}
+
 	FVector2D TargetLocation = FVector2D::ZeroVector;
 	int32 NumActors = 0;
 
@@ -725,8 +747,7 @@ void ARisePlayerController::FocusCameraOnActors(TArray<AActor*> Actors, bool bAl
 	const int32 CameraBufferSpace = 20;
 
 	// Snap the camera zoom to the final location.
-	CameraZoom.Stop();
-	OnCameraZoomFinished();
+	RisePlayer->CameraSpringArmComponent->TargetArmLength = ZoomCameraTargetStep;
 
 	bool bAllActorsVisible;
 	do
@@ -756,14 +777,14 @@ void ARisePlayerController::FocusCameraOnActors(TArray<AActor*> Actors, bool bAl
 
 		if (!bAllActorsVisible)
 		{
-			if (TargetCameraZoomStep == MaximumCameraZoom)
+			if (ZoomCameraTargetStep == ZoomCameraMaximumDistance)
 			{
 				break;
 			}
 
 			// Force the camera to zoom out.
-			TargetCameraZoomStep = FMath::Min(TargetCameraZoomStep + CameraZoomStep, MaximumCameraZoom);
-			OnCameraZoomFinished();
+			ZoomCameraTargetStep = FMath::Clamp(ZoomCameraTargetStep + ZoomCameraStep, ZoomCameraMinimumDistance, ZoomCameraMaximumDistance);
+			RisePlayer->CameraSpringArmComponent->TargetArmLength = ZoomCameraTargetStep;
 		}
 
 	} while (!bAllActorsVisible);
@@ -841,63 +862,26 @@ void ARisePlayerController::EndInverseSelectionFrame()
 	bInverseSelectionHotkeyPressed = false;
 }
 
-CAMERA_FUNCTION_IMPL(Pan, Horizontal)
-CAMERA_FUNCTION_IMPL(Pan, Vertical)
-
-void ARisePlayerController::OnCameraZoomInterp(float TimelineValue)
+void ARisePlayerController::PanCameraHorizontal(float Scale)
 {
-	ARisePlayer* GamePawn = GetRisePlayer();
-	check(GamePawn);
-
-	GamePawn->CameraSpringArmComponent->TargetArmLength = FMath::Lerp(CurrentCameraZoomStep, TargetCameraZoomStep, TimelineValue);
-}
-
-void ARisePlayerController::OnCameraZoomFinished()
-{
-	ARisePlayer* GamePawn = GetRisePlayer();
-	check(GamePawn);
-
-	GamePawn->CameraSpringArmComponent->TargetArmLength = TargetCameraZoomStep;
-}
-
-void ARisePlayerController::PanCameraUp(float Scale)
-{
-	CameraVerticalAxisValue = Scale;
-
-	if (Scale >= .0001f)
+	if (bCameraMovementDisabled)
 	{
-		CameraVerticalPanDrift.Timeline.PlayFromStart();
+		return;
 	}
+
+	PanCameraHorizontalAxisValue += Scale;
+	PanCameraHorizontalDelta = PanCameraEaseDuration;
 }
 
-void ARisePlayerController::PanCameraDown(float Scale)
+void ARisePlayerController::PanCameraVertical(float Scale)
 {
-	CameraVerticalAxisValue = Scale;
-
-	if (Scale >= .0001f)
+	if (bCameraMovementDisabled)
 	{
-		CameraVerticalPanDrift.Timeline.PlayFromStart();
+		return;
 	}
-}
 
-void ARisePlayerController::PanCameraLeft(float Scale)
-{
-	CameraHorizontalAxisValue = Scale;
-
-	if (Scale >= .0001f)
-	{
-		CameraHorizontalPanDrift.Timeline.PlayFromStart();
-	}
-}
-
-void ARisePlayerController::PanCameraRight(float Scale)
-{
-	CameraHorizontalAxisValue = Scale;
-
-	if (Scale >= .0001f)
-	{
-		CameraHorizontalPanDrift.Timeline.PlayFromStart();
-	}
+	PanCameraVerticalAxisValue += Scale;
+	PanCameraVerticalDelta = PanCameraEaseDuration;
 }
 
 void ARisePlayerController::ZoomCameraIn()
@@ -907,16 +891,11 @@ void ARisePlayerController::ZoomCameraIn()
 		return;
 	}
 
-	// Start/Restart our camera zoom drift timeline.
-	CameraZoom.Stop();
+	// Update the target step.
+	ZoomCameraTargetStep = FMath::Clamp(ZoomCameraTargetStep - ZoomCameraStep, ZoomCameraMinimumDistance, ZoomCameraMaximumDistance);
 
-	ARisePlayer* GamePawn = GetRisePlayer();
-	check(GamePawn);
-
-	TargetCameraZoomStep = FMath::Clamp(TargetCameraZoomStep - CameraZoomStep, MinimumCameraZoom, MaximumCameraZoom);
-	CurrentCameraZoomStep = GamePawn->CameraSpringArmComponent->TargetArmLength;
-
-	CameraZoom.PlayFromStart();
+	// Reset the interp anchor to the current zoom.
+	ZoomCameraCurrentStep = GetCameraZoomActual();
 }
 
 void ARisePlayerController::ZoomCameraOut()
@@ -926,16 +905,11 @@ void ARisePlayerController::ZoomCameraOut()
 		return;
 	}
 
-	// Start/Restart our camera zoom drift timeline.
-	CameraZoom.Stop();
+	// Update the target step.
+	ZoomCameraTargetStep = FMath::Clamp(ZoomCameraTargetStep + ZoomCameraStep, ZoomCameraMinimumDistance, ZoomCameraMaximumDistance);
 
-	ARisePlayer* GamePawn = GetRisePlayer();
-	check(GamePawn);
-
-	TargetCameraZoomStep = FMath::Clamp(TargetCameraZoomStep + CameraZoomStep, MinimumCameraZoom, MaximumCameraZoom);
-	CurrentCameraZoomStep = GamePawn->CameraSpringArmComponent->TargetArmLength;
-
-	CameraZoom.PlayFromStart();
+	// Reset the interp anchor to the current zoom.
+	ZoomCameraCurrentStep = GetCameraZoomActual();
 }
 
 void ARisePlayerController::OnInput_Debug()
