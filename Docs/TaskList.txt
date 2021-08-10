@@ -1,14 +1,12 @@
 HIGH PRIORITY
-- Fix camera angle in RisePlayerBP.
-- Fix camera controls.
-	- Remove panning and zoom drifts. In the MVP prioritize function over form.
-	- Implement simple horizontal and vertical.	
-- Move worldgen to GameMode
-	- Implement worldgen noise generator instead of doing random grid
+- Rotate entire RisePlayerBP instead of the CameraBoomComponent
+- Verify that selectables are selectable
 
 MEDIUM PRIORITY
 - Create a HUD class for Survival game mode.
-- Create a simple info panel to display Clickable information.
+- Create a simple info panel to display Selectable information.
+- Move worldgen to GameMode
+	- Implement worldgen noise generator instead of doing random grid
 
 LOW PRIORITY
 - Create Shallow, Medium, and Deep Water nodes
