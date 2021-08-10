@@ -45,7 +45,7 @@ void ARisePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ZoomCameraCurrentStep = GetZameraZoomActual();
+	ZoomCameraCurrentStep = GetCameraZoomActual();
 	ZoomCameraTargetStep = ZoomCameraCurrentStep;
 
 	for (TActorIterator<ARiseCameraBoundsVolume> ActorItr(GetWorld()); ActorItr; ++ActorItr)
