@@ -13,11 +13,11 @@
 
 #define RISE_LOG(...) \
 	DEBUG_LOG(Cyan, ##__VA_ARGS__); \
-	UE_LOG(RiseLog, Log, ##__VA_ARGS__) \
+	UE_LOG(LogRise, Log, ##__VA_ARGS__) \
 
 #define RISE_LOGF(Format, ...) \
 	DEBUG_LOGF(Cyan, Format, ##__VA_ARGS__); \
-	UE_LOG(RiseLog, Log, Format, ##__VA_ARGS__) \
+	UE_LOG(LogRise, Log, Format, ##__VA_ARGS__) \
 
 #define RISE_WARNING(...) \
 	DEBUG_LOG(Yellow, ##__VA_ARGS__); \

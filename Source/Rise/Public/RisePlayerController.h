@@ -504,9 +504,9 @@ protected:
 
 private:
 
-	float PanCameraHorizontalAxisValue;
+	float PanCameraHorizontalAxisForce;
 	float PanCameraHorizontalDelta;
-	float PanCameraVerticalAxisValue;
+	float PanCameraVerticalAxisForce;
 	float PanCameraVerticalDelta;
 
 	void PanCameraHorizontal(float Scale);

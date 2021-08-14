@@ -27,9 +27,9 @@ ARisePlayerController::ARisePlayerController()
 	bPanCameraRegionPercent = false;
 	PanCameraRegionPercent = 0.05f;
 	PanCameraRegionPixels = 1920 * PanCameraRegionPercent; // 1080p default
-	PanCameraHorizontalAxisValue = 0.f;
+	PanCameraHorizontalAxisForce = 0.f;
 	PanCameraHorizontalDelta = 0.f;
-	PanCameraVerticalAxisValue = 0.f;
+	PanCameraVerticalAxisForce = 0.f;
 	PanCameraVerticalDelta = 0.f;
 	PanCameraEaseDuration = 0.25f; // 250ms
 	ZoomCameraMinimumDistance = 400;
@@ -89,10 +89,8 @@ void ARisePlayerController::SetupInputComponent()
 		InputComponent->BindAction(TEXT("ZoomCameraIn"), IE_Pressed, this, &ARisePlayerController::ZoomCameraIn);
 		InputComponent->BindAction(TEXT("ZoomCameraOut"), IE_Pressed, this, &ARisePlayerController::ZoomCameraOut);
 
-		InputComponent->BindAxis(TEXT("PanCameraUp"), this, &ARisePlayerController::PanCameraVertical);
-		InputComponent->BindAxis(TEXT("PanCameraDown"), this, &ARisePlayerController::PanCameraVertical);
-		InputComponent->BindAxis(TEXT("PanCameraLeft"), this, &ARisePlayerController::PanCameraHorizontal);
-		InputComponent->BindAxis(TEXT("PanCameraRight"), this, &ARisePlayerController::PanCameraHorizontal);
+		InputComponent->BindAxis(TEXT("PanCameraVertical"), this, &ARisePlayerController::PanCameraVertical);
+		InputComponent->BindAxis(TEXT("PanCameraHorizontal"), this, &ARisePlayerController::PanCameraHorizontal);
 	}
 }
 
@@ -182,6 +180,8 @@ void ARisePlayerController::UpdateCamera(float DeltaTime)
 			return;
 		}
 
+		float PanCameraHorizontalMouseIntensity = 0, PanCameraVerticalMouseIntensity = 0;
+
 		// Apply camera pan from viewport boundaries.
 		if (GEngine)
 		{
@@ -200,64 +200,90 @@ void ARisePlayerController::UpdateCamera(float DeltaTime)
 			{
 				if (MouseX < PamCameraRegionPixelsCalculated)
 				{
-					PanCameraHorizontalAxisValue -= 1 - (MouseX / PamCameraRegionPixelsCalculated);
+					PanCameraHorizontalMouseIntensity = 1 - (MouseX / PamCameraRegionPixelsCalculated);
 				}
 				else if (MouseX >= ScrollBorderRight)
 				{
-					PanCameraHorizontalAxisValue += (MouseX - ScrollBorderRight) / PamCameraRegionPixelsCalculated;
+					PanCameraHorizontalMouseIntensity = (MouseX - ScrollBorderRight) / PamCameraRegionPixelsCalculated;
 				}
 
 				if (MouseY <= PamCameraRegionPixelsCalculated)
 				{
-					PanCameraVerticalAxisValue += 1 - (MouseY / PamCameraRegionPixelsCalculated);
+					PanCameraVerticalMouseIntensity = 1 - (MouseY / PamCameraRegionPixelsCalculated);
 				}
 				else if (MouseY >= ScrollBorderTop)
 				{
-					PanCameraVerticalAxisValue -= (MouseY - ScrollBorderTop) / PamCameraRegionPixelsCalculated;
+					PanCameraVerticalMouseIntensity = (MouseY - ScrollBorderTop) / PamCameraRegionPixelsCalculated;
 				}
 			}
 		}
 
+		FTransform PlayerTransform = PlayerPawn->GetActorTransform();
+		FVector CameraPanOffset = FVector::Zero();
+
+		// Update the pan deltas.
+		PanCameraHorizontalDelta = FMath::Clamp(PanCameraHorizontalDelta - DeltaTime, 0, PanCameraEaseDuration);
+		PanCameraVerticalDelta = FMath::Clamp(PanCameraVerticalDelta - DeltaTime, 0, PanCameraEaseDuration);
+
 		// Clamp the pan values to between -1 and 1. We don't want, for example, the A key and the mouse to the left
 		// of the screen to pan twice as fast as normal.
-		PanCameraHorizontalAxisValue = FMath::Clamp(PanCameraHorizontalAxisValue, -1.f, 1.f);
-		PanCameraVerticalAxisValue = FMath::Clamp(PanCameraVerticalAxisValue, -1.f, 1.f);
+		float PanCameraHorizontalAxisForceActual = FMath::Clamp(PanCameraHorizontalAxisForce + PanCameraHorizontalMouseIntensity, -1.f, 1.f);
+		float PanCameraVerticalAxisForceActual = FMath::Clamp(PanCameraVerticalAxisForce + PanCameraVerticalMouseIntensity, -1.f, 1.f);
 
-		if (PanCameraHorizontalAxisValue >= 0 ||
-			PanCameraVerticalAxisValue >= 0)
+		if (PanCameraHorizontalAxisForceActual != 0)
 		{
-			float HorizontalPanSpeed = CalculateCameraMovementSpeed() * PanCameraHorizontalAxisValue * UKismetMathLibrary::Ease(1, 0, 1 - (PanCameraHorizontalDelta / PanCameraEaseDuration), EEasingFunc::EaseOut);
-			float VerticalPanSpeed = CalculateCameraMovementSpeed() * PanCameraVerticalAxisValue * UKismetMathLibrary::Ease(1, 0, 1 - (PanCameraVerticalDelta / PanCameraEaseDuration), EEasingFunc::EaseOut);
+			float HorizontalPanSpeed = CalculateCameraMovementSpeed() * PanCameraHorizontalAxisForceActual * UKismetMathLibrary::Ease(1, 0, 1 - (PanCameraHorizontalDelta / PanCameraEaseDuration), EEasingFunc::EaseOut);
+			CameraPanOffset = CameraPanOffset + PlayerTransform.GetRotation().GetRightVector() * HorizontalPanSpeed;
 
-			FTransform PlayerTransform = PlayerPawn->GetActorTransform();
-			FVector HorizontalPanVector = PlayerTransform.GetRotation().GetRightVector() * HorizontalPanSpeed;
-			FVector VerticalPanVector = PlayerTransform.GetRotation().GetForwardVector() * VerticalPanSpeed;
-			FVector NewCameraLocation = PlayerTransform.GetLocation() + HorizontalPanVector + VerticalPanVector;
-
-			FocusCameraOnWorldLocation(NewCameraLocation);
-
-			// Reset the values for the next input capture.
-			PanCameraHorizontalAxisValue = 0.f;
-			PanCameraVerticalAxisValue = 0.f;
-
-			// Update the pan deltas.
-			PanCameraHorizontalDelta = FMath::Clamp(0, PanCameraEaseDuration, PanCameraHorizontalDelta + DeltaTime);
-			PanCameraVerticalDelta += FMath::Clamp(0, PanCameraEaseDuration, PanCameraVerticalDelta + DeltaTime);
+			// If a pan direction has finished its ease, reset the axis force back down to 0.
+			// Note that this means that panning via the cursor will not cause the easing effect.
+			// This is intentional.
+			if (PanCameraHorizontalDelta == 0)
+			{
+				PanCameraHorizontalAxisForce = 0;
+			}
 		}
 
-		if (ZoomCameraTargetStep != GetCameraZoomActual())
+		if (PanCameraVerticalAxisForceActual != 0)
+		{
+			float VerticalPanSpeed = CalculateCameraMovementSpeed() * PanCameraVerticalAxisForceActual * UKismetMathLibrary::Ease(1, 0, 1 - (PanCameraVerticalDelta / PanCameraEaseDuration), EEasingFunc::EaseOut);
+			CameraPanOffset = CameraPanOffset + PlayerTransform.GetRotation().GetForwardVector() * VerticalPanSpeed;
+
+			// If a pan direction has finished its ease, reset the axis force back down to 0.
+			// Note that this means that panning via the cursor will not cause the easing effect.
+			// This is intentional.
+			if (PanCameraVerticalDelta == 0)
+			{
+				PanCameraVerticalAxisForce = 0;
+			}
+		}
+
+		if (!CameraPanOffset.IsZero())
+		{
+			FVector NewCameraLocation = PlayerTransform.GetLocation() + CameraPanOffset;
+
+			FocusCameraOnWorldLocation(NewCameraLocation);
+		}
+
+		if (GetCameraZoomActual() != ZoomCameraTargetStep)
 		{
 			float CameraZoomSpeed = UKismetMathLibrary::Ease(1, 0, 1 - (ZoomCameraDelta / ZoomCameraEaseDuration), EEasingFunc::EaseOut);
+			float NewTargetArmLength = UKismetMathLibrary::Ease(ZoomCameraCurrentStep, ZoomCameraTargetStep, ZoomCameraDelta / ZoomCameraEaseDuration, EEasingFunc::EaseOut);
 
 			//TODO: Zoom for spectator
 			ARisePlayer* RisePlayer = Cast<ARisePlayer>(PlayerPawn);
 			if (RisePlayer)
 			{
-				RisePlayer->CameraSpringArmComponent->TargetArmLength = UKismetMathLibrary::Ease(ZoomCameraCurrentStep, ZoomCameraTargetStep, 1 - (ZoomCameraDelta / ZoomCameraEaseDuration), EEasingFunc::EaseOut);
+				RisePlayer->CameraSpringArmComponent->TargetArmLength = NewTargetArmLength;
 			}
 
 			// Update the zoom delta.
 			ZoomCameraDelta += FMath::Clamp(0, ZoomCameraEaseDuration, ZoomCameraEaseDuration + DeltaTime);
+
+			if (NewTargetArmLength == ZoomCameraTargetStep)
+			{
+				ZoomCameraCurrentStep = ZoomCameraTargetStep;
+			}
 		}
 	}
 }
@@ -869,8 +895,14 @@ void ARisePlayerController::PanCameraHorizontal(float Scale)
 		return;
 	}
 
-	PanCameraHorizontalAxisValue += Scale;
-	PanCameraHorizontalDelta = PanCameraEaseDuration;
+	// Only set the axis intensity and reset the delta timer
+	// if there is some input, otherwise let the pan animation
+	// ease play out.
+	if (FMath::Abs(Scale) >= 0.001f)
+	{
+		PanCameraHorizontalAxisForce = Scale;
+		PanCameraHorizontalDelta = PanCameraEaseDuration;
+	}
 }
 
 void ARisePlayerController::PanCameraVertical(float Scale)
@@ -880,8 +912,14 @@ void ARisePlayerController::PanCameraVertical(float Scale)
 		return;
 	}
 
-	PanCameraVerticalAxisValue += Scale;
-	PanCameraVerticalDelta = PanCameraEaseDuration;
+	// Only set the axis intensity and reset the delta timer
+	// if there is some input, otherwise let the pan animation
+	// ease play out.
+	if (FMath::Abs(Scale) >= 0.001f)
+	{
+		PanCameraVerticalAxisForce = Scale;
+		PanCameraVerticalDelta = PanCameraEaseDuration;
+	}
 }
 
 void ARisePlayerController::ZoomCameraIn()

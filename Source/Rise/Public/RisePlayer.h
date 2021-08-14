@@ -27,6 +27,16 @@ public:
 	UPROPERTY(EditAnywhere)
 	class UCameraComponent* CameraComponent;
 
+private:
+
+	/** The camera pitch. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rise|Camera", meta=(ClampMin="-90", ClampMax="-10"))
+	float CameraPitch;
+
 public:
 	ARisePlayer();
+
+protected:
+
+	virtual void BeginPlay() override;
 };

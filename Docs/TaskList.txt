@@ -1,5 +1,7 @@
 HIGH PRIORITY
-- Rotate entire RisePlayerBP instead of the CameraBoomComponent
+- Fix RisePlayerBP rotation to get correct forward vectors
+	- Rotate root component by 45 degrees
+	- Rotate camera boom by -60 degrees
 - Verify that selectables are selectable
 
 MEDIUM PRIORITY
